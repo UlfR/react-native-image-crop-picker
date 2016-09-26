@@ -307,7 +307,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         }
     }
 
-    @Override
+    //@Override
     public void onNewIntent(Intent intent) {
     }
 
