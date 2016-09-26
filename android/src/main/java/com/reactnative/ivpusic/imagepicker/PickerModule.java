@@ -15,7 +15,11 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.Manifest;
 import android.os.Environment;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.widget.ArrayAdapter;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -41,6 +45,10 @@ import java.io.FileInputStream;
 import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Created by ipusic on 5/16/16.
@@ -224,6 +232,71 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         } catch (Exception e) {
             mPickerPromise.reject(E_FAILED_TO_SHOW_PICKER, e);
         }
+    }
+
+    @ReactMethod
+    public void open(final ReadableMap options, final Promise promise) {
+        activity = getCurrentActivity();
+
+        if (activity == null) {
+            promise.reject(E_ACTIVITY_DOES_NOT_EXIST, "Activity doesn't exist");
+            return;
+        }
+
+        final List<String> titles = new ArrayList<String>();
+        final List<String> actions = new ArrayList<String>();
+
+        if (options.hasKey("takePhotoButtonTitle")
+                && options.getString("takePhotoButtonTitle") != null
+                && !options.getString("takePhotoButtonTitle").isEmpty()) {
+            titles.add(options.getString("takePhotoButtonTitle"));
+            actions.add("photo");
+        }
+        if (options.hasKey("chooseFromLibraryButtonTitle")
+                && options.getString("chooseFromLibraryButtonTitle") != null
+                && !options.getString("chooseFromLibraryButtonTitle").isEmpty()) {
+            titles.add(options.getString("chooseFromLibraryButtonTitle"));
+            actions.add("library");
+        }
+
+        String cancelButtonTitle = options.getString("cancelButtonTitle");
+        titles.add(cancelButtonTitle);
+        actions.add("cancel");
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(activity,
+                android.R.layout.select_dialog_item, titles);
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        if (options.hasKey("title") && options.getString("title") != null && !options.getString("title").isEmpty()) {
+            builder.setTitle(options.getString("title"));
+        }
+
+        builder.setAdapter(adapter, new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int index) {
+                String action = actions.get(index);
+
+                switch (action) {
+                    case "photo":
+                        openCamera(options, promise);
+                        break;
+                    case "library":
+                        openPicker(options, promise);
+                        break;
+                    case "cancel":
+                        promise.reject("Cancel pressed", "");
+                        break;
+                }
+            }
+        });
+
+        final AlertDialog dialog = builder.create();
+        dialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                dialog.dismiss();
+                promise.reject("Cancel pressed", "");
+            }
+        });
+        dialog.show();
     }
 
     private String getBase64StringFromFile(String absoluteFilePath) {
