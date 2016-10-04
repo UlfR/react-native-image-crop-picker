@@ -236,7 +236,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
 
     @ReactMethod
     public void open(final ReadableMap options, final Promise promise) {
-        activity = getCurrentActivity();
+        Activity activity = getCurrentActivity();
 
         if (activity == null) {
             promise.reject(E_ACTIVITY_DOES_NOT_EXIST, "Activity doesn't exist");
@@ -512,6 +512,9 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
     }
 
     @Override
+    public void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
+    }
+
     public void onActivityResult(Activity activity, final int requestCode, final int resultCode, final Intent data) {
         if (requestCode == IMAGE_PICKER_REQUEST) {
             imagePickerResult(activity, requestCode, resultCode, data);
@@ -522,7 +525,6 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         }
     }
 
-    @Override
     public void onNewIntent(Intent intent) {
     }
 
