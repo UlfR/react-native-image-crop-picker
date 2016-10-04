@@ -1,17 +1,11 @@
 # react-native-image-crop-picker
-iOS/Android image picker with support for multiple images and cropping
+iOS/Android image picker with support for camera, video compression, multiple images and cropping
 
 ## Result
 
-#### iOS
 <img width=200 title="iOS Single Pick" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/ios_single_pick.png">
 <img width=200 title="iOS Crop" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/ios_crop.png">
 <img width=200 title="iOS Multiple Pick" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/ios_multiple_pick.png">
-
-#### Android
-<img width=200 title="iOS Single Pick" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/android_single_pick.png">
-<img width=200 title="iOS Crop" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/android_crop.png">
-<img width=200 title="iOS Multiple Pick" src="https://github.com/ivpusic/react-native-image-crop-picker/blob/master/images/android_multiple.png">
 
 ## Usage
 
@@ -53,6 +47,17 @@ ImagePicker.openCamera({
 });
 ```
 
+#### Optional cleanup
+Module is creating tmp images which are going to be cleaned up automatically somewhere in the future. If you want to force cleanup, you can use `clean` to clean all tmp files, or `cleanSingle(path)` to clean single tmp file.
+
+```javascript
+ImagePicker.clean().then(() => {
+  console.log('removed all tmp images from tmp directory');
+}).catch(e => {
+  alert(e);
+});
+```
+
 #### Request Object
 
 | Property        | Type           | Description  |
@@ -63,6 +68,8 @@ ImagePicker.openCamera({
 | multiple | bool (default false) | Enable or disable multiple image selection |
 | includeBase64 | bool (default false) | Enable or disable returning base64 data with image |
 | maxFiles (ios only) | number (default 5) | Max number of files to select when using `multiple` option |
+| compressVideo (ios only) | bool (default true) | When video is selected, compress it and convert it to mp4 |
+| smartAlbums (ios only) | array (default ['UserLibrary', 'PhotoStream', 'Panoramas', 'Videos', 'Bursts']) | List of smart albums to choose from |
 
 #### Response Object
 
@@ -77,56 +84,50 @@ ImagePicker.openCamera({
 
 ## Install
 
-`npm install react-native-image-crop-picker --save`
-
-#### iOS
-
 ```
-pod 'react-native-image-crop-picker', :path => '../node_modules/react-native-image-crop-picker/ios'
+npm i react-native-image-crop-picker --save
+react-native link react-native-image-crop-picker
 ```
 
-[- Step By Step tutorial](https://github.com/ivpusic/react-native-image-crop-picker#ios-step-by-step-installation)
+#### Post-install steps
 
-#### Android
-```gradle
-// file: android/settings.gradle
-...
+##### iOS
 
-include ':react-native-image-crop-picker'
-project(':react-native-image-crop-picker').projectDir = new File(settingsDir, '../node_modules/react-native-image-crop-picker/android')
-```
-```gradle
-// file: android/app/build.gradle
-...
+###### cocoapods users
 
-dependencies {
-    ...
-    compile project(':react-native-image-crop-picker')
-}
-```
+- Add `platform :ios, '8.0'` to Podfile (!important)
+- Add `pod 'RSKImageCropper'` and `pod 'QBImagePickerController'` to Podfile
 
-```java
-// file: MainApplication.java
-...
+###### non-cocoapods users
 
-import com.reactnative.picker.PickerPackage; // import package
+- Drag and drop the ios/ImageCropPickerSDK folder to your xcode project. (Make sure Copy items if needed IS ticked)
+- Click on project General tab
+  - Under `Deployment Info` set `Deployment Target` to `8.0`
+  - Under `Embedded Binaries` click `+` and add `RSKImageCropper.framework` and `QBImagePicker.framework`
 
-public class MainApplication extends ReactApplication {
-...
-   /**
-   * A list of packages used by the app. If the app uses additional views
-   * or modules besides the default ones, add more packages here.
-   */
-    @Override
-    protected List<ReactPackage> getPackages() {
-        return Arrays.<ReactPackage>asList(
-            new MainReactPackage(),
-            new PickerPackage() // Add package
-        );
-    }
-...
-}
-```
+##### Android
+
+- [Optional] If you want to use camera picker in your project, add following to `AndroidManifest.xml`
+  - `<uses-permission android:name="android.permission.CAMERA"/>`  
+
+#### Production build
+
+##### iOS
+
+###### cocoapods users
+
+- You are already done
+
+###### non-cocoapods users
+
+If you are using pre-built frameworks from `ios/ImageCropPickerSDK`, then before deploying app to production you should strip off simulator ARCHs from these, or you can add frameworks from `Libraries/imageCropPicker/Libraries/_framework_name_.xcodeproj/Products/_framework_name_.framework` to Embedded Binaries instead of pre-built ones.
+Related issue: https://github.com/ivpusic/react-native-image-crop-picker/issues/61.
+
+Details for second approach:
+
+1. Remove the pre-built frameworks from `Embedded Binaries`
+2. Build for Device
+4. Add the newly built binaries for both frameworks to `Embedded Binaries` (located at `Libraries/imageCropPicker/Libraries/_framework_name_.xcodeproj/Products/_framework_name_.framework`)
 
 ## How it works?
 
@@ -139,38 +140,6 @@ It is basically wrapper around few libraries
 #### iOS
 - QBImagePickerController
 - RSKImageCropper
-
-# iOS Step by Step installation
-
-- Create new react native project with Pods support
-```
-react-native init picker
-cd picker
-npm i react-native-image-crop-picker --save
-cd ios
-pod init
-```
-
-- Inside `ios` directory change `Podfile` to following
-```
-platform :ios, '8.0'
-
-target 'picker' do
-    source 'https://github.com/CocoaPods/Specs.git'
-    pod 'React', :path => '../node_modules/react-native'
-    pod 'react-native-image-crop-picker', :path => '../node_modules/react-native-image-crop-picker/ios'
-end
-```
-
-- Run
-```
-pod install
-```
-
-- open **project_name.xcworkspace**
-- Add `$(inherited)` to other linker flags under Build Settings
-
-Done!
 
 ## License
 *MIT*
