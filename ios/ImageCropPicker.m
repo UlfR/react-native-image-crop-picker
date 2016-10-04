@@ -341,11 +341,12 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
           didFinishPickingAssets:(NSArray *)assets {
 
     PHImageManager *manager = [PHImageManager defaultManager];
+    PHImageRequestOptions* options = [[PHImageRequestOptions alloc] init];
+    options.synchronous = NO;
+    options.networkAccessAllowed = YES;
 
     if ([[[self options] objectForKey:@"multiple"] boolValue]) {
         NSMutableArray *selections = [[NSMutableArray alloc] init];
-        PHImageRequestOptions* options = [[PHImageRequestOptions alloc] init];
-        options.synchronous = YES;
 
         [self showActivityIndicator:^(UIActivityIndicatorView *indicatorView, UIView *overlayView) {
             NSLock *lock = [[NSLock alloc] init];
@@ -412,9 +413,8 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
     } else {
         PHAsset *phAsset = [assets objectAtIndex:0];
 
-        if (phAsset.mediaType == PHAssetMediaTypeVideo) {
-
-            [self showActivityIndicator:^(UIActivityIndicatorView *indicatorView, UIView *overlayView) {
+        [self showActivityIndicator:^(UIActivityIndicatorView *indicatorView, UIView *overlayView) {
+            if (phAsset.mediaType == PHAssetMediaTypeVideo) {
                 [self getVideoAsset:phAsset completion:^(NSDictionary* video) {
                     if (video != nil) {
                         self.resolve(video);
@@ -427,17 +427,20 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
                     [overlayView removeFromSuperview];
                     [imagePickerController dismissViewControllerAnimated:YES completion:nil];
                 }];
-            }];
-        } else {
-            [manager
-             requestImageDataForAsset:phAsset
-             options:nil
-             resultHandler:^(NSData *imageData, NSString *dataUTI,
-                             UIImageOrientation orientation,
-                             NSDictionary *info) {
-                 [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController];
-             }];
-        }
+            } else {
+                [manager
+                 requestImageDataForAsset:phAsset
+                 options:options
+                 resultHandler:^(NSData *imageData, NSString *dataUTI,
+                                 UIImageOrientation orientation,
+                                 NSDictionary *info) {
+                     
+                     [indicatorView stopAnimating];
+                     [overlayView removeFromSuperview];
+                     [self processSingleImagePick:[UIImage imageWithData:imageData] withViewController:imagePickerController];
+                 }];
+            }
+        }];
     }
 }
 
