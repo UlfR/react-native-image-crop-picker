@@ -112,6 +112,9 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         pickVideo = false;
         if (options.hasKey("mediaType") && options.getString("mediaType").equals("video")) {
             pickVideo = true;
+            cropping = false;
+        } else {
+            pickVideo = false;
         }
     }
 
