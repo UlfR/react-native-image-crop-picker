@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.PixelFormat;
 import android.media.MediaMetadataRetriever;
+import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.DocumentsContract;
@@ -75,6 +76,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
     private boolean cropping = false;
     private boolean multiple = false;
     private boolean includeBase64 = false;
+    private boolean pickVideo = false;
     private int width = 200;
     private int height = 200;
     private Boolean tmpImage;
@@ -107,6 +109,10 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         width = options.hasKey("width") ? options.getInt("width") : width;
         height = options.hasKey("height") ? options.getInt("height") : height;
         cropping = options.hasKey("cropping") ? options.getBoolean("cropping") : cropping;
+        pickVideo = false;
+        if (options.hasKey("mediaType") && options.getString("mediaType").equals("video")) {
+            pickVideo = true;
+        }
     }
 
     private void deleteRecursive(File fileOrDirectory) {
@@ -183,7 +189,12 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         mPickerPromise = promise;
 
         try {
-            cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            if (pickVideo) {
+                cameraIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+            } else {
+                cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            }
+
             tmpImage = true;
             // we create a tmp file to save the result
             File imageFile = createNewFile(true);
@@ -220,7 +231,11 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             if (cropping) {
                 galleryIntent.setType("image/*");
             } else {
-                galleryIntent.setType("image/*,video/*");
+                if (pickVideo) {
+                    galleryIntent.setType("video/*");
+                } else {
+                    galleryIntent.setType("image/*");
+                }
             }
 
             galleryIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
@@ -362,6 +377,17 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             image.putInt("height", bmp.getHeight());
         }
 
+        //TODO
+        //Bitmap thumb = createVideoThumbnail(path, MICRO_KIND) // MINI_KIND or MICRO_KIND
+        //String thumbPath = path + '.jpeg';
+        //final FileOutputStream fos = new FileOutputStream(thumbPath);
+        //bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+        //fos.close();
+        //String thumb = getBase64StringFromFile(thumbPath)
+        //File fileThumb = new File(thumbPath);
+        //fileThumb.delete();
+        //image.putString("thumb", thumb);
+
         image.putString("path", "file://" + path);
         image.putString("mime", mime);
         image.putInt("size", (int) new File(path).length());
@@ -486,7 +512,23 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
                 startCropping(activity, uri);
             } else {
                 try {
-                    mPickerPromise.resolve(getImage(activity, uri, true));
+                    WritableMap result;
+                    Uri vUri = data.getData();
+                    String path = RealPathUtil.getRealPathFromURI(activity, vUri);
+                    String mime = getMimeType(path);
+
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "path: " + path);
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "vUri: " + vUri.toString());
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "uri: " + uri.getPath());
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "mime: " + mime);
+
+                    if (pickVideo && mime != null && mime.startsWith("video/")) {
+                        result = getVideo(path, mime);
+                    } else {
+                        result = getImage(activity, uri, true);
+                    }
+
+                    mPickerPromise.resolve(result);
                 } catch (Exception ex) {
                     mPickerPromise.reject(E_NO_IMAGE_DATA_FOUND, ex.getMessage());
                 }
@@ -512,9 +554,6 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
     }
 
     @Override
-    public void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
-    }
-
     public void onActivityResult(Activity activity, final int requestCode, final int resultCode, final Intent data) {
         if (requestCode == IMAGE_PICKER_REQUEST) {
             imagePickerResult(activity, requestCode, resultCode, data);
@@ -525,6 +564,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
         }
     }
 
+    @Override
     public void onNewIntent(Intent intent) {
     }
 
@@ -549,7 +589,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
     }
 
     private File createNewFile(final boolean forcePictureDirectory) {
-        String filename = "image-" + UUID.randomUUID().toString() + ".jpg";
+        String filename = "image-" + UUID.randomUUID().toString() + (pickVideo ? ".mp4" : ".jpg");
         if (tmpImage && (!forcePictureDirectory)) {
             return new File(this.getTmpDir(), filename);
         } else {
@@ -566,5 +606,21 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
 
             return f;
         }
+    }
+
+    private String getRealPathFromURI(Uri uri) {
+        String result;
+        String[] projection = {MediaStore.Images.Media.DATA};
+        Cursor cursor = mReactContext.getContentResolver().query(uri, projection, null, null, null);
+        if (cursor == null) { // Source is Dropbox or other similar local file path
+            result = uri.getPath();
+        } else {
+            cursor.moveToFirst();
+            int idx = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+            result = cursor.getString(idx);
+            cursor.close();
+        }
+
+        return result;
     }
 }
