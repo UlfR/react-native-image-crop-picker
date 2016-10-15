@@ -1,5 +1,7 @@
 package com.reactnative.ivpusic.imagepicker;
 
+import java.io.FileNotFoundException;
+
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.Intent;
@@ -380,16 +382,20 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             image.putInt("height", bmp.getHeight());
         }
 
-        //TODO
-        //Bitmap thumb = createVideoThumbnail(path, MICRO_KIND) // MINI_KIND or MICRO_KIND
-        //String thumbPath = path + '.jpeg';
-        //final FileOutputStream fos = new FileOutputStream(thumbPath);
-        //bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos);
-        //fos.close();
-        //String thumb = getBase64StringFromFile(thumbPath)
-        //File fileThumb = new File(thumbPath);
-        //fileThumb.delete();
-        //image.putString("thumb", thumb);
+        Bitmap thumbB = android.media.ThumbnailUtils.createVideoThumbnail(path, MediaStore.Video.Thumbnails.MICRO_KIND); // MINI_KIND or MICRO_KIND
+        String thumbPath = this.getTmpDir() + "/image-" + UUID.randomUUID().toString() + ".jpeg";
+
+        try {
+            final java.io.FileOutputStream fos = new java.io.FileOutputStream(thumbPath);
+            thumbB.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+            fos.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        String thumb = getBase64StringFromFile(thumbPath);
+        File fileThumb = new File(thumbPath);
+        fileThumb.delete();
+        image.putString("thumb", thumb);
 
         image.putString("path", "file://" + path);
         image.putString("mime", mime);
