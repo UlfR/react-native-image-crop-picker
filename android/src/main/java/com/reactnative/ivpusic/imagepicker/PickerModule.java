@@ -75,6 +75,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
 
     private Promise mPickerPromise;
 
+    private String pickType;
     private boolean cropping = false;
     private boolean multiple = false;
     private boolean includeBase64 = false;
@@ -204,6 +205,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             // we create a tmp file to save the result
             File imageFile = createNewFile(true);
             mCameraCaptureURI = Uri.fromFile(imageFile);
+            android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "set IMAGE FILENAME: " + mCameraCaptureURI);
 
             cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, mCameraCaptureURI);
             if (cameraIntent.resolveActivity(mReactContext.getPackageManager()) == null) {
@@ -296,9 +298,11 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
 
                 switch (action) {
                     case "photo":
+                        pickType = "camera";
                         openCamera(options, promise);
                         break;
                     case "library":
+                        pickType = "gallery";
                         openPicker(options, promise);
                         break;
                     case "cancel":
@@ -429,6 +433,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             throw new Exception("Invalid image selected");
         }
 
+        image.putString("pickType", pickType);
         image.putString("path", "file://" + path);
         image.putInt("width", options.outWidth);
         image.putInt("height", options.outHeight);
@@ -482,6 +487,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
 
             } else {
                 Uri uri = data.getData();
+                android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "imagePickerResult: " + uri);
 
                 if (uri == null) {
                     mPickerPromise.reject(E_NO_IMAGE_DATA_FOUND, "Cannot resolve image url");
@@ -509,6 +515,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
             mPickerPromise.reject(E_PICKER_CANCELLED_KEY, E_PICKER_CANCELLED_MSG);
         } else if (resultCode == Activity.RESULT_OK) {
             Uri uri = mCameraCaptureURI;
+            android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "cameraPickerResult: " + uri);
 
             if (uri == null) {
                 mPickerPromise.reject(E_NO_IMAGE_DATA_FOUND, "Cannot resolve image url");
@@ -525,6 +532,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
                     Uri vUri = data.getData();
                     String path = RealPathUtil.getRealPathFromURI(activity, vUri);
                     String mime = getMimeType(path);
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "cameraPickerResult: (vUri)" + vUri);
 
                     android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "path: " + path);
                     android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "vUri: " + vUri.toString());
@@ -548,6 +556,7 @@ public class PickerModule extends ReactContextBaseJavaModule implements Activity
     public void croppingResult(Activity activity, final int requestCode, final int resultCode, final Intent data) {
         if (data != null) {
             final Uri resultUri = UCrop.getOutput(data);
+            android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "croppingResult: " + resultUri);
             if (resultUri != null) {
                 try {
                     mPickerPromise.resolve(getImage(activity, resultUri, false));
