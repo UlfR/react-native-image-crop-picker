@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.MediaMetadataRetriever;
+import android.media.ThumbnailUtils;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -17,7 +18,11 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.FileProvider;
 import android.util.Base64;
 import android.webkit.MimeTypeMap;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.widget.ArrayAdapter;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -42,6 +47,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.Callable;
 
 class PickerModule extends ReactContextBaseJavaModule implements ActivityEventListener {
@@ -63,6 +70,9 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
     private static final String E_ERROR_WHILE_CLEANING_FILES = "E_ERROR_WHILE_CLEANING_FILES";
 
     private Promise mPickerPromise;
+
+    private String pickType;
+    private boolean pickVideo = false;
 
     private boolean cropping = false;
     private boolean multiple = false;
@@ -108,6 +118,13 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         cropping = options.hasKey("cropping") ? options.getBoolean("cropping") : cropping;
         cropperTintColor = options.hasKey("cropperTintColor") ? options.getString("cropperTintColor") : cropperTintColor;
 
+        pickVideo = false;
+        if (options.hasKey("mediaType") && options.getString("mediaType").equals("video")) {
+            pickVideo = true;
+            cropping = false;
+        } else {
+            pickVideo = false;
+        }
     }
 
     private void deleteRecursive(File fileOrDirectory) {
@@ -269,7 +286,12 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
 
         try {
             int requestCode = CAMERA_PICKER_REQUEST;
-            Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            Intent cameraIntent;// = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            if (pickVideo) {
+                cameraIntent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+            } else {
+                cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            }
 
             File imageFile = createImageFile();
 
@@ -281,6 +303,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
                         imageFile);
             }
 
+            android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "set IMAGE FILENAME: " + mCameraCaptureURI);
             cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, mCameraCaptureURI);
 
             if (cameraIntent.resolveActivity(mReactContext.getPackageManager()) == null) {
@@ -302,7 +325,11 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
             if (cropping) {
                 galleryIntent.setType("image/*");
             } else {
-                galleryIntent.setType("image/*,video/*");
+                if (pickVideo) {
+                    galleryIntent.setType("video/*");
+                } else {
+                    galleryIntent.setType("image/*");
+                }
             }
 
             galleryIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
@@ -335,6 +362,73 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
                 return null;
             }
         });
+    }
+
+    @ReactMethod
+    public void open(final ReadableMap options, final Promise promise) {
+        Activity activity = getCurrentActivity();
+
+        if (activity == null) {
+            promise.reject(E_ACTIVITY_DOES_NOT_EXIST, "Activity doesn't exist");
+            return;
+        }
+
+        final List<String> titles = new ArrayList<String>();
+        final List<String> actions = new ArrayList<String>();
+
+        if (options.hasKey("takePhotoButtonTitle")
+                && options.getString("takePhotoButtonTitle") != null
+                && !options.getString("takePhotoButtonTitle").isEmpty()) {
+            titles.add(options.getString("takePhotoButtonTitle"));
+            actions.add("photo");
+        }
+        if (options.hasKey("chooseFromLibraryButtonTitle")
+                && options.getString("chooseFromLibraryButtonTitle") != null
+                && !options.getString("chooseFromLibraryButtonTitle").isEmpty()) {
+            titles.add(options.getString("chooseFromLibraryButtonTitle"));
+            actions.add("library");
+        }
+
+        String cancelButtonTitle = options.getString("cancelButtonTitle");
+        titles.add(cancelButtonTitle);
+        actions.add("cancel");
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(activity,
+                android.R.layout.select_dialog_item, titles);
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+        if (options.hasKey("title") && options.getString("title") != null && !options.getString("title").isEmpty()) {
+            builder.setTitle(options.getString("title"));
+        }
+
+        builder.setAdapter(adapter, new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int index) {
+                String action = actions.get(index);
+
+                switch (action) {
+                    case "photo":
+                        pickType = "camera";
+                        openCamera(options, promise);
+                        break;
+                    case "library":
+                        pickType = "gallery";
+                        openPicker(options, promise);
+                        break;
+                    case "cancel":
+                        promise.reject("Cancel pressed", "");
+                        break;
+                }
+            }
+        });
+
+        final AlertDialog dialog = builder.create();
+        dialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            @Override
+            public void onCancel(DialogInterface dialog) {
+                dialog.dismiss();
+                promise.reject("Cancel pressed", "");
+            }
+        });
+        dialog.show();
     }
 
     private String getBase64StringFromFile(String absoluteFilePath) {
@@ -381,7 +475,9 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         }
 
         String mime = getMimeType(path);
-        if (mime != null && mime.startsWith("video/")) {
+        android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "path: " + path);
+        android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "mime: " + mime);
+        if (pickVideo && mime != null && mime.startsWith("video/")) {
             return getVideo(path, mime);
         }
 
@@ -399,6 +495,21 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
             image.putInt("width", bmp.getWidth());
             image.putInt("height", bmp.getHeight());
         }
+
+        Bitmap thumbB = android.media.ThumbnailUtils.createVideoThumbnail(path, MediaStore.Video.Thumbnails.MICRO_KIND); // MINI_KIND or MICRO_KIND
+        String thumbPath = this.getTmpDir() + "/image-" + UUID.randomUUID().toString() + ".jpeg";
+
+        try {
+            final java.io.FileOutputStream fos = new java.io.FileOutputStream(thumbPath);
+            thumbB.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+            fos.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        String thumb = getBase64StringFromFile(thumbPath);
+        File fileThumb = new File(thumbPath);
+        fileThumb.delete();
+        image.putString("thumb", thumb);
 
         image.putString("path", "file://" + path);
         image.putString("mime", mime);
@@ -440,6 +551,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
             throw new Exception("Invalid image selected");
         }
 
+        image.putString("pickType", pickType);
         image.putString("path", "file://" + path);
         image.putInt("width", options.outWidth);
         image.putInt("height", options.outHeight);
@@ -550,6 +662,11 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
                 startCropping(activity, uri);
             } else {
                 try {
+                    Uri vUri = data.getData();
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "vUri: " + vUri.toString());
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "cameraPickerResult: (vUri)" + vUri);
+                    android.util.Log.v("ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", "uri: " + uri.getPath());
+
                     mPickerPromise.resolve(getSelection(activity, uri, true));
                 } catch (Exception ex) {
                     mPickerPromise.reject(E_NO_IMAGE_DATA_FOUND, ex.getMessage());
@@ -603,7 +720,7 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
         String imageFileName = "image-" + UUID.randomUUID().toString();
         File path = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_PICTURES);
-        File image = File.createTempFile(imageFileName, ".jpg", path);
+        File image = File.createTempFile(imageFileName, (pickVideo ? ".mp4" : ".jpg"), path);
 
         // Save a file: path for use with ACTION_VIEW intents
         mCurrentPhotoPath = "file:" + image.getAbsolutePath();
