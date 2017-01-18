@@ -5,6 +5,7 @@
 //  Copyright © 2016 Facebook. All rights reserved.
 //
 
+#import <MobileCoreServices/UTCoreTypes.h>
 #import "ImageCropPicker.h"
 
 #define ERROR_PICKER_CANNOT_RUN_CAMERA_ON_SIMULATOR_KEY @"E_PICKER_CANNOT_RUN_CAMERA_ON_SIMULATOR"
@@ -30,6 +31,8 @@
 
 @implementation ImageCropPicker
 
+
+
 RCT_EXPORT_MODULE();
 
 - (instancetype)init
@@ -40,6 +43,7 @@ RCT_EXPORT_MODULE();
                                 @"cropping": @NO,
                                 @"includeBase64": @NO,
                                 @"compressVideo": @YES,
+                                @"video": @NO,
                                 @"maxFiles": @5,
                                 @"width": @200,
                                 @"height": @200,
@@ -105,11 +109,17 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
 
         UIImagePickerController *picker = [[UIImagePickerController alloc] init];
         picker.delegate = self;
-        picker.allowsEditing = NO;
+        picker.allowsEditing = YES;
         picker.sourceType = UIImagePickerControllerSourceTypeCamera;
         if ([[self.options objectForKey:@"useFrontCamera"] boolValue]) {
             picker.cameraDevice = UIImagePickerControllerCameraDeviceFront;
         }
+
+	if ([[self.options objectForKey:@"video"] boolValue]) {
+		picker.mediaTypes = [[NSArray alloc] initWithObjects: (NSString *) kUTTypeMovie, nil];
+		//picker.mediaTypes =[UIImagePickerController availableMediaTypesForSourceType:picker.sourceType];
+        	picker.cameraCaptureMode = UIImagePickerControllerCameraCaptureModeVideo;
+	}
 
         dispatch_async(dispatch_get_main_queue(), ^{
             [[self getRootVC] presentViewController:picker animated:YES completion:nil];
@@ -118,9 +128,49 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
 #endif
 }
 
+- (PHAsset*)getAssetFromlocalIdentifier:(NSString*)localIdentifier{
+    if(localIdentifier == nil){
+        NSLog(@"Cannot get asset from localID because it is nil");
+        return nil;
+    }
+    PHFetchResult *result = [PHAsset fetchAssetsWithLocalIdentifiers:@[localIdentifier] options:nil];
+    if(result.count){
+        return result[0];
+    }
+    return nil;
+}
+
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
-    UIImage *chosenImage = [info objectForKey:UIImagePickerControllerOriginalImage];
-    [self processSingleImagePick:chosenImage withViewController:picker];
+
+	NSString *tpp = [info objectForKey:UIImagePickerControllerMediaType];
+	if ([tpp isEqualToString:@"public.movie"]) {
+		NSURL *chosenMovie = [info objectForKey:UIImagePickerControllerMediaURL];
+		__block PHObjectPlaceholder *placeholder;
+
+		[[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+			PHAssetChangeRequest *acr = [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:chosenMovie];
+			placeholder = [acr placeholderForCreatedAsset];
+//			if (localAssetCollection != nil) {
+//				PHAssetCollectionChangeRequest *aCCR = [PHAssetCollectionChangeRequest changeRequestForAssetCollection:localAssetCollection];
+//			        [aCCR addAssets:@[[acr placeholderForCreatedAsset]]];
+//			}
+		} completionHandler:^(BOOL success, NSError *error) {
+			PHAsset * phAsset = [self getAssetFromlocalIdentifier:placeholder.localIdentifier];
+			[self getVideoAsset:phAsset completion:^(NSDictionary* video) {
+	                    dispatch_async(dispatch_get_main_queue(), ^{
+	                        if (video != nil) {
+        	                    self.resolve(video);
+                	        } else {
+                        	    self.reject(ERROR_CANNOT_PROCESS_VIDEO_KEY, ERROR_CANNOT_PROCESS_VIDEO_MSG, nil);
+	                        }
+	                        [picker dismissViewControllerAnimated:YES completion:nil];
+                    	    });
+	                }];
+		}];
+        } else {
+	    UIImage *chosenImage = [info objectForKey:UIImagePickerControllerOriginalImage];
+	    [self processSingleImagePick:chosenImage withViewController:picker];
+	}
 }
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
@@ -214,7 +264,9 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
             if ([[self.options objectForKey:@"cropping"] boolValue]) {
                 imagePickerController.mediaType = QBImagePickerMediaTypeImage;
             } else {
-                imagePickerController.mediaType = QBImagePickerMediaTypeAny;
+ 	           if ([[self.options objectForKey:@"video"] boolValue]) {
+        	        imagePickerController.mediaType = QBImagePickerMediaTypeVideo;
+	           }
             }
 
             [[self getRootVC] presentViewController:imagePickerController animated:YES completion:nil];
@@ -287,6 +339,15 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
          AVAssetTrack *track = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
          CGSize dimensions = CGSizeApplyAffineTransform(track.naturalSize, track.preferredTransform);
 
+         AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc]initWithAsset:asset];
+         imageGenerator.appliesPreferredTrackTransform = YES;
+         CMTime time = [asset duration];
+         time.value = 0;
+         CGImageRef imageRef = [imageGenerator copyCGImageAtTime:time actualTime:NULL error:NULL];
+         UIImage *thumbnail = [UIImage imageWithCGImage:imageRef];
+         CGImageRelease(imageRef);  // CGImageRef won't be released by ARC
+         NSData *data = UIImageJPEGRepresentation(thumbnail, 1);
+
          if (![[self.options objectForKey:@"compressVideo"] boolValue]) {
              NSNumber *fileSizeValue = nil;
              [sourceURL getResourceValue:&fileSizeValue
@@ -298,7 +359,7 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
                                             withHeight:[NSNumber numberWithFloat:dimensions.height]
                                               withMime:[@"video/" stringByAppendingString:[[sourceURL pathExtension] lowercaseString]]
                                               withSize:fileSizeValue
-                                              withData:[NSNull null]]);
+                                       	      withData:[data base64EncodedStringWithOptions:0]]);
              return;
          }
 
@@ -320,7 +381,7 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
                                                 withHeight:[NSNumber numberWithFloat:dimensions.height]
                                                   withMime:@"video/mp4"
                                                   withSize:fileSizeValue
-                                                  withData:[NSNull null]]);
+                                       		  withData:[data base64EncodedStringWithOptions:0]]);
              } else {
                  completion(nil);
              }
